@@ -37,7 +37,6 @@ fn setup_fonts(ctx: &egui::Context) {
 struct BastionApp {
     state: AppState,
     result: Arc<Mutex<Option<Result<String, String>>>>,
-    msg: String,
     cfg: config::Config,
 }
 
@@ -56,7 +55,7 @@ impl BastionApp {
         } else {
             AppState::MainMenu
         };
-        Self { state, result: Arc::new(Mutex::new(None)), msg: String::new(), cfg }
+        Self { state, result: Arc::new(Mutex::new(None)), cfg }
     }
 }
 
