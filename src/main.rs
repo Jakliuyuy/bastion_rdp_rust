@@ -84,6 +84,7 @@ impl eframe::App for BastionApp {
                     ctx.request_repaint();
                 }
                 AppState::Done(Ok(_)) => {
+                    let mut back = false;
                     ui.vertical_centered(|ui| {
                         ui.add_space(60.0);
                         ui.heading("连接成功");
@@ -91,21 +92,25 @@ impl eframe::App for BastionApp {
                         ui.label("远程桌面已启动");
                         ui.add_space(20.0);
                         if ui.add_sized([150.0, 35.0], egui::Button::new("返回")).clicked() {
-                            self.state = AppState::MainMenu;
+                            back = true;
                         }
                     });
+                    if back { self.state = AppState::MainMenu; }
                 }
                 AppState::Done(Err(e)) => {
+                    let mut back = false;
+                    let err = e.clone();
                     ui.vertical_centered(|ui| {
                         ui.add_space(40.0);
                         ui.heading("连接失败");
                         ui.add_space(10.0);
-                        ui.label(e.as_str());
+                        ui.label(&err);
                         ui.add_space(20.0);
                         if ui.add_sized([150.0, 35.0], egui::Button::new("返回")).clicked() {
-                            self.state = AppState::MainMenu;
+                            back = true;
                         }
                     });
+                    if back { self.state = AppState::MainMenu; }
                 }
             }
         });
@@ -113,7 +118,7 @@ impl eframe::App for BastionApp {
 }
 
 impl BastionApp {
-    fn show_main_menu(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+    fn show_main_menu(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context) {
         ui.vertical_centered(|ui| {
             ui.add_space(30.0);
             ui.heading("堡垒机一键连接");
@@ -182,16 +187,14 @@ impl BastionApp {
         let result = self.result.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
-            let res = rt.block_on(async { api::login_and_connect(&cfg).await });
-            if let Ok(Ok(url)) = &res {
+            let res: Result<String, String> = rt.block_on(async { api::login_and_connect(&cfg).await });
+            if let Ok(url) = &res {
                 std::process::Command::new("cmd")
                     .args(["/c", "start", "", url])
                     .spawn().ok();
             }
-            if let Ok(mut r) = result.lock() {
-                let err = res.and_then(|o| o.map_err(|e| e));
-                *r = Some(err);
-            }
+            let mut r = result.lock().unwrap();
+            *r = Some(res);
         });
     }
 }
