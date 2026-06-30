@@ -4,6 +4,8 @@ mod config;
 
 use eframe::egui;
 use egui::FontDefinitions;
+use std::sync::Arc;
+use std::fs;
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
@@ -21,7 +23,7 @@ fn main() -> eframe::Result {
 fn setup_fonts(ctx: &egui::Context) {
     if let Ok(data) = std::fs::read("C:/Windows/Fonts/msyh.ttc") {
         let mut fonts = FontDefinitions::default();
-        fonts.font_data.insert("msyh".into(), egui::FontData::from_owned(data));
+        fonts.font_data.insert("msyh".into(), Arc::new(egui::FontData::from_owned(data)));
         if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
             family.insert(0, "msyh".into());
         }
