@@ -3,6 +3,7 @@ mod api;
 mod config;
 
 use eframe::egui;
+use egui::FontDefinitions;
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
@@ -11,7 +12,21 @@ fn main() -> eframe::Result {
             .with_resizable(false),
         ..Default::default()
     };
-    eframe::run_native("堡垒机", options, Box::new(|_cc| Ok(Box::new(BastionApp::new()))))
+    eframe::run_native("堡垒机", options, Box::new(|cc| {
+        setup_fonts(&cc.egui_ctx);
+        Ok(Box::new(BastionApp::new()))
+    }))
+}
+
+fn setup_fonts(ctx: &egui::Context) {
+    if let Ok(data) = std::fs::read("C:/Windows/Fonts/msyh.ttc") {
+        let mut fonts = FontDefinitions::default();
+        fonts.font_data.insert("msyh".into(), egui::FontData::from_owned(data));
+        if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
+            family.insert(0, "msyh".into());
+        }
+        ctx.set_fonts(fonts);
+    }
 }
 
 struct BastionApp {
