@@ -13,14 +13,25 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([420.0, 300.0])
-            .with_resizable(false)
-            .with_centered(),
+            .with_resizable(false),
         ..Default::default()
     };
     eframe::run_native("堡垒机", options, Box::new(|cc| {
         setup_fonts(&cc.egui_ctx);
+        center_window(&cc.egui_ctx);
         Ok(Box::new(BastionApp::new()))
     }))
+}
+
+fn center_window(ctx: &egui::Context) {
+    use egui::viewport::ViewportCommand;
+    let w = 420.0;
+    let h = 300.0;
+    if let Some(info) = ctx.input(|i| i.viewport().monitor_size) {
+        let x = ((info.x as f32 - w) / 2.0).max(0.0);
+        let y = ((info.y as f32 - h) / 2.0).max(0.0);
+        ctx.send_viewport_cmd(ViewportCommand::OuterPosition(egui::Pos2::new(x, y)));
+    }
 }
 
 fn setup_fonts(ctx: &egui::Context) {
