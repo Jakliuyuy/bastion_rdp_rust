@@ -65,7 +65,7 @@ impl BastionApp {
                 let cfg = self.cfg.clone();
                 let ctx_clone = ctx.clone();
                 std::thread::spawn(move || {
-                    let result = connect_and_launch(&cfg);
+                    let _result = connect_and_launch(&cfg);
                     ctx_clone.request_repaint();
                     // We need a way to communicate back. For simplicity, we store result.
                     // This is a simplified version.
