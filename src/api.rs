@@ -59,9 +59,6 @@ pub async fn login_and_connect(cfg: &Config) -> Result<String, String> {
     let csrf = resp["data"]["csrfToken"].as_str().ok_or("no csrf")?.to_string();
     let ts = resp["data"]["timeStamp"].as_u64().ok_or("no ts")?.to_string();
 
-    eprintln!("DBG: pubkey={}...", &pubkey[..40]);
-    eprintln!("DBG: cookie={}", cookie);
-
     // 2. Login
     let enc_user = crypto::encrypt(&cfg.user, &pubkey);
     let enc_pwd = crypto::encrypt(&cfg.password, &pubkey);
@@ -83,7 +80,6 @@ pub async fn login_and_connect(cfg: &Config) -> Result<String, String> {
         return Err(format!("查询服务器失败: code={}, desc={}", code, resp["desc"].as_str().unwrap_or("?")));
     }
     let arr = resp["data"].as_array().ok_or_else(|| format!("响应: {}", resp))?;
-    eprintln!("DBG: found {} servers", arr.len());
     let srv = arr.iter()
         .find(|x| x["devIp"].as_str() == Some(&cfg.server_ip))
         .ok_or_else(|| format!("未找到服务器 {}，共{}台", cfg.server_ip, arr.len()))?;
