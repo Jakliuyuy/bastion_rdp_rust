@@ -13,7 +13,8 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([420.0, 300.0])
-            .with_resizable(false),
+            .with_resizable(false)
+            .with_centered(),
         ..Default::default()
     };
     eframe::run_native("堡垒机", options, Box::new(|cc| {
