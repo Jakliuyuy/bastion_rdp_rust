@@ -22,15 +22,6 @@ fn main() -> eframe::Result {
     }))
 }
 
-fn center_window(ctx: &egui::Context) {
-    let w = 420.0;
-    let h = 300.0;
-    if let Some(info) = ctx.input(|i| i.viewport().monitor_size) {
-        let x = ((info.x as f32 - w) / 2.0).max(0.0);
-        let y = ((info.y as f32 - h) / 2.0).max(0.0);
-        ctx.input_mut(|i| i.viewport().outer_position = Some(egui::Pos2::new(x, y)));
-    }
-}
 
 fn setup_fonts(ctx: &egui::Context) {
     if let Ok(data) = fs::read("C:/Windows/Fonts/msyh.ttc") {
