@@ -7,6 +7,7 @@ const BASTION: &str = "https://10.233.83.246";
 pub async fn login_and_connect(cfg: &Config) -> Result<String, String> {
     let client = reqwest::Client::builder()
         .danger_accept_invalid_certs(true)
+        .cookie_store(true)
         .build()
         .map_err(|e| e.to_string())?;
 
