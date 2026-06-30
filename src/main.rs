@@ -6,7 +6,7 @@ mod config;
 
 use eframe::egui;
 use egui::FontDefinitions;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::fs;
 
 fn main() -> eframe::Result {
@@ -23,7 +23,7 @@ fn main() -> eframe::Result {
 }
 
 fn setup_fonts(ctx: &egui::Context) {
-    if let Ok(data) = std::fs::read("C:/Windows/Fonts/msyh.ttc") {
+    if let Ok(data) = fs::read("C:/Windows/Fonts/msyh.ttc") {
         let mut fonts = FontDefinitions::default();
         fonts.font_data.insert("msyh".into(), Arc::new(egui::FontData::from_owned(data)));
         if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
@@ -35,6 +35,7 @@ fn setup_fonts(ctx: &egui::Context) {
 
 struct BastionApp {
     state: AppState,
+    result: Arc<Mutex<Option<Result<String, String>>>>,
     msg: String,
     cfg: config::Config,
 }
@@ -43,6 +44,7 @@ enum AppState {
     MainMenu,
     Config,
     Connecting,
+    Done(Result<String, String>),
 }
 
 impl BastionApp {
@@ -53,17 +55,58 @@ impl BastionApp {
         } else {
             AppState::MainMenu
         };
-        Self { state, msg: String::new(), cfg }
+        Self { state, result: Arc::new(Mutex::new(None)), msg: String::new(), cfg }
     }
 }
 
 impl eframe::App for BastionApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Check if background task completed
+        if let AppState::Connecting = self.state {
+            if let Ok(mut r) = self.result.lock() {
+                if let Some(res) = r.take() {
+                    self.state = AppState::Done(res);
+                }
+            }
+        }
+
         egui::CentralPanel::default().show(ctx, |ui| {
             match &self.state {
                 AppState::MainMenu => self.show_main_menu(ui, ctx),
                 AppState::Config => self.show_config(ui),
-                AppState::Connecting => self.show_connecting(ui, ctx),
+                AppState::Connecting => {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(80.0);
+                        ui.label("正在连接...");
+                        ui.add_space(20.0);
+                        ui.spinner();
+                    });
+                    ctx.request_repaint();
+                }
+                AppState::Done(Ok(_)) => {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(60.0);
+                        ui.heading("连接成功");
+                        ui.add_space(10.0);
+                        ui.label("远程桌面已启动");
+                        ui.add_space(20.0);
+                        if ui.add_sized([150.0, 35.0], egui::Button::new("返回")).clicked() {
+                            self.state = AppState::MainMenu;
+                        }
+                    });
+                }
+                AppState::Done(Err(e)) => {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(40.0);
+                        ui.heading("连接失败");
+                        ui.add_space(10.0);
+                        ui.label(e.as_str());
+                        ui.add_space(20.0);
+                        if ui.add_sized([150.0, 35.0], egui::Button::new("返回")).clicked() {
+                            self.state = AppState::MainMenu;
+                        }
+                    });
+                }
             }
         });
     }
@@ -80,15 +123,7 @@ impl BastionApp {
                 .on_hover_text("直接连接")
                 .clicked()
             {
-                self.state = AppState::Connecting;
-                let cfg = self.cfg.clone();
-                let ctx_clone = ctx.clone();
-                std::thread::spawn(move || {
-                    let _result = connect_and_launch(&cfg);
-                    ctx_clone.request_repaint();
-                    // We need a way to communicate back. For simplicity, we store result.
-                    // This is a simplified version.
-                });
+                self.start_connect();
             }
 
             ui.add_space(10.0);
@@ -111,19 +146,15 @@ impl BastionApp {
                     ui.label("堡垒机用户名:");
                     ui.add(egui::TextEdit::singleline(&mut self.cfg.user).desired_width(200.0));
                     ui.end_row();
-
                     ui.label("堡垒机密码:");
                     ui.add(egui::TextEdit::singleline(&mut self.cfg.password).password(true).desired_width(200.0));
                     ui.end_row();
-
                     ui.label("服务器密码:");
                     ui.add(egui::TextEdit::singleline(&mut self.cfg.server_pwd).password(true).desired_width(200.0));
                     ui.end_row();
-
                     ui.label("服务器账号:");
                     ui.add(egui::TextEdit::singleline(&mut self.cfg.server_user).desired_width(200.0));
                     ui.end_row();
-
                     ui.label("服务器IP:");
                     ui.add(egui::TextEdit::singleline(&mut self.cfg.server_ip).desired_width(200.0));
                     ui.end_row();
@@ -135,11 +166,7 @@ impl BastionApp {
                 if ui.add_sized([120.0, 35.0], egui::Button::new("保存并连接")).clicked() {
                     if !self.cfg.user.is_empty() && !self.cfg.password.is_empty() {
                         config::save(&self.cfg);
-                        self.state = AppState::Connecting;
-                        let cfg = self.cfg.clone();
-                        std::thread::spawn(move || {
-                            connect_and_launch(&cfg);
-                        });
+                        self.start_connect();
                     }
                 }
                 if ui.add_sized([120.0, 35.0], egui::Button::new("取消")).clicked() {
@@ -149,29 +176,22 @@ impl BastionApp {
         });
     }
 
-    fn show_connecting(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context) {
-        ui.vertical_centered(|ui| {
-            ui.add_space(80.0);
-            ui.label("正在连接...");
-            ui.add_space(20.0);
-            ui.spinner();
+    fn start_connect(&mut self) {
+        self.state = AppState::Connecting;
+        let cfg = self.cfg.clone();
+        let result = self.result.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let res = rt.block_on(async { api::login_and_connect(&cfg).await });
+            if let Ok(Ok(url)) = &res {
+                std::process::Command::new("cmd")
+                    .args(["/c", "start", "", url])
+                    .spawn().ok();
+            }
+            if let Ok(mut r) = result.lock() {
+                let err = res.and_then(|o| o.map_err(|e| e));
+                *r = Some(err);
+            }
         });
     }
-}
-
-fn connect_and_launch(cfg: &config::Config) {
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(async {
-        match api::login_and_connect(cfg).await {
-            Ok(url) => {
-                std::process::Command::new("cmd")
-                    .args(["/c", "start", "", &url])
-                    .spawn()
-                    .ok();
-            }
-            Err(e) => {
-                eprintln!("Error: {}", e);
-            }
-        }
-    });
 }
