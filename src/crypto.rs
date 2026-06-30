@@ -19,8 +19,8 @@ fn ec_add(p1: (&BigUint, &BigUint), p2: (&BigUint, &BigUint)) -> (BigUint, BigUi
     let p = Sm2Curve::p();
     if *p1.0 == p { return (p2.0.clone(), p2.1.clone()); }
     if *p2.0 == p { return (p1.0.clone(), p1.1.clone()); }
-    let dx = (&p2.0 + &p - p1.0) % &p;
-    let dy = (&p2.1 + &p - p1.1) % &p;
+    let dx = (p2.0 + &p - p1.0) % &p;
+    let dy = (p2.1 + &p - p1.1) % &p;
     let lam = (&dy * mod_inv(&dx, &p)) % &p;
     let x3 = (&lam * &lam + &p - p1.0 - p2.0) % &p;
     let y3 = (&lam * (p1.0 + &p - &x3) + &p - p1.1) % &p;
@@ -30,11 +30,11 @@ fn ec_add(p1: (&BigUint, &BigUint), p2: (&BigUint, &BigUint)) -> (BigUint, BigUi
 fn ec_double(p: (&BigUint, &BigUint)) -> (BigUint, BigUint) {
     let p_field = Sm2Curve::p();
     let a = Sm2Curve::a();
-    let dy = (&a + 3u64 * &p.0 * &p.0) % &p_field;
-    let dx = (2u64 * &p.1) % &p_field;
+    let dy = (&a + 3u64 * p.0 * p.0) % &p_field;
+    let dx = (2u64 * p.1) % &p_field;
     let lam = (&dy * mod_inv(&dx, &p_field)) % &p_field;
-    let x3 = (&lam * &lam + &p_field - &p.0 - &p.0) % &p_field;
-    let y3 = (&lam * (&p.0 + &p_field - &x3) + &p_field - &p.1) % &p_field;
+    let x3 = (&lam * &lam + &p_field - p.0 - p.0) % &p_field;
+    let y3 = (&lam * (p.0 + &p_field - &x3) + &p_field - p.1) % &p_field;
     (x3, y3)
 }
 
@@ -59,7 +59,6 @@ fn sm3(data: &[u8]) -> Vec<u8> {
     h.finalize().to_vec()
 }
 
-/// SM2 encrypt, returns "04" + C1x||C1y + C2 + C3 in hex
 pub fn encrypt(plaintext: &str, pubkey_hex: &str) -> String {
     let pk = if pubkey_hex.len() > 128 { &pubkey_hex[pubkey_hex.len()-128..] } else { pubkey_hex };
     let px = BigUint::parse_bytes(pk[..64].as_bytes(), 16).unwrap();
@@ -78,7 +77,6 @@ pub fn encrypt(plaintext: &str, pubkey_hex: &str) -> String {
     let x2b = pad32(&x2.to_bytes_be());
     let y2b = pad32(&y2.to_bytes_be());
 
-    // KDF: SM3(x||y||ct=1), take first pt.len() bytes
     let mut kdf_in = x2b.clone();
     kdf_in.extend_from_slice(&y2b);
     kdf_in.extend_from_slice(&[0, 0, 0, 1]);
@@ -86,7 +84,6 @@ pub fn encrypt(plaintext: &str, pubkey_hex: &str) -> String {
 
     let c2: Vec<u8> = pt.iter().zip(kdf_out.iter()).map(|(a, b)| a ^ b).collect();
 
-    // C3 = SM3(x||M||y)
     let mut c3_in = x2b.clone();
     c3_in.extend_from_slice(pt);
     c3_in.extend_from_slice(&y2b);
