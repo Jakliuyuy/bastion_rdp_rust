@@ -5,7 +5,6 @@ mod config;
 use eframe::egui;
 use egui::FontDefinitions;
 use std::sync::Arc;
-use std::fs;
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
