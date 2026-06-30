@@ -1,49 +1,67 @@
 use std::process::Command;
 use std::path::PathBuf;
 
-fn get_base() -> PathBuf {
+fn find_node_modules() -> Option<PathBuf> {
+    // Debug: check current dir
+    if let Ok(cwd) = std::env::current_dir() {
+        let nm = cwd.join("node_modules").join("sm-crypto");
+        if nm.exists() { eprintln!("DBG: found node_modules at cwd"); return Some(cwd); }
+    }
+    // Check exe location
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            if cfg!(debug_assertions) {
-                // In debug mode, look for node_modules in the source dir
-                let src = dir.join("..").join("..").join("node_modules");
-                if src.exists() { return dir.join("..").join(".."); }
-            }
-            // Check beside the exe first
-            let nm = dir.join("node_modules");
-            if nm.exists() { return dir.to_path_buf(); }
+            let nm = dir.join("node_modules").join("sm-crypto");
+            if nm.exists() { eprintln!("DBG: found node_modules beside exe"); return Some(dir.to_path_buf()); }
         }
     }
-    // Fallback: check common locations
+    // Check hardcoded paths
     for p in &[
         "C:/Users/admin/AppData/Local/Temp/opencode",
         "C:/Users/admin/Desktop",
     ] {
         let pb = PathBuf::from(p);
-        if pb.join("node_modules").exists() { return pb; }
+        if pb.join("node_modules").join("sm-crypto").exists() {
+            eprintln!("DBG: found node_modules at {}", p);
+            return Some(pb);
+        }
     }
-    std::env::current_dir().unwrap_or_default()
+    eprintln!("DBG: node_modules NOT FOUND!");
+    None
 }
 
 pub fn encrypt(plaintext: &str, pubkey_hex: &str) -> String {
+    let base = match find_node_modules() {
+        Some(b) => b,
+        None => {
+            eprintln!("ERROR: node_modules/sm-crypto not found!");
+            eprintln!("      place node_modules/sm-crypto beside the exe");
+            return String::new();
+        }
+    };
+    eprintln!("DBG: base dir = {:?}", base);
+
     let code = r#"const sm2=require('sm-crypto').sm2;const[p,k]=process.argv.slice(1);process.stdout.write('04'+sm2.doEncrypt(p,k,0));"#;
 
-    let base = get_base();
-    let node = if cfg!(windows) { "node.exe" } else { "node" };
-
-    let output = Command::new(node)
+    let output = Command::new("node")
         .arg("-e")
         .arg(code)
         .arg(plaintext)
         .arg(pubkey_hex)
         .current_dir(&base)
         .output()
-        .expect("Failed to execute node. Make sure Node.js is installed.");
+        .expect("Failed to execute node.exe. Install Node.js first.");
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        panic!("Node.js SM2 encrypt failed: {}", stderr);
+    eprintln!("DBG: node exit code = {:?}", output.status.code());
+    if !output.stderr.is_empty() {
+        eprintln!("DBG: node stderr = {}", String::from_utf8_lossy(&output.stderr));
     }
 
-    String::from_utf8(output.stdout).expect("Invalid UTF-8 from node").trim().to_string()
+    if !output.status.success() {
+        eprintln!("ERROR: Node.js encrypt failed");
+        return String::new();
+    }
+
+    let result = String::from_utf8(output.stdout).expect("Invalid UTF-8 from node").trim().to_string();
+    eprintln!("DBG: encrypted len = {}", result.len());
+    result
 }
