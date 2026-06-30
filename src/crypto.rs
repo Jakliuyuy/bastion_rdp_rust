@@ -1,20 +1,49 @@
-use libsm::sm2::ecc::EccCtx;
-use libsm::sm2::encrypt::EncryptCtx;
+use std::process::Command;
+use std::path::PathBuf;
+
+fn get_base() -> PathBuf {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            if cfg!(debug_assertions) {
+                // In debug mode, look for node_modules in the source dir
+                let src = dir.join("..").join("..").join("node_modules");
+                if src.exists() { return dir.join("..").join(".."); }
+            }
+            // Check beside the exe first
+            let nm = dir.join("node_modules");
+            if nm.exists() { return dir.to_path_buf(); }
+        }
+    }
+    // Fallback: check common locations
+    for p in &[
+        "C:/Users/admin/AppData/Local/Temp/opencode",
+        "C:/Users/admin/Desktop",
+    ] {
+        let pb = PathBuf::from(p);
+        if pb.join("node_modules").exists() { return pb; }
+    }
+    std::env::current_dir().unwrap_or_default()
+}
 
 pub fn encrypt(plaintext: &str, pubkey_hex: &str) -> String {
-    let pk = if pubkey_hex.len() > 128 { &pubkey_hex[..130] } else { pubkey_hex };
-    // pk is "04" + x(64 hex) + y(64 hex) = 130 hex chars = 65 bytes
-    let pk_bytes = hex::decode(pk).expect("invalid pubkey hex");
+    let code = r#"const sm2=require('sm-crypto').sm2;const[p,k]=process.argv.slice(1);process.stdout.write('04'+sm2.doEncrypt(p,k,0));"#;
 
-    let ecc = EccCtx::new();
-    let point = ecc.bytes_to_point(&pk_bytes).expect("invalid pubkey point");
+    let base = get_base();
+    let node = if cfg!(windows) { "node.exe" } else { "node" };
 
-    let klen = plaintext.len();
-    let ctx = EncryptCtx::new(klen, point);
-    let cipher = ctx.encrypt(plaintext.as_bytes()).expect("encrypt failed");
+    let output = Command::new(node)
+        .arg("-e")
+        .arg(code)
+        .arg(plaintext)
+        .arg(pubkey_hex)
+        .current_dir(&base)
+        .output()
+        .expect("Failed to execute node. Make sure Node.js is installed.");
 
-    // cipher format: [04||x||y(65 bytes)] [C2(klen)] [C3(32 bytes)]
-    // Server expects: 04||x||y||C2||C3 (same format)
-    // cipher is Vec<u8>, return as hex
-    hex::encode(cipher)
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        panic!("Node.js SM2 encrypt failed: {}", stderr);
+    }
+
+    String::from_utf8(output.stdout).expect("Invalid UTF-8 from node").trim().to_string()
 }
