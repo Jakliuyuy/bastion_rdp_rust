@@ -18,19 +18,17 @@ fn main() -> eframe::Result {
     };
     eframe::run_native("堡垒机", options, Box::new(|cc| {
         setup_fonts(&cc.egui_ctx);
-        center_window(&cc.egui_ctx);
         Ok(Box::new(BastionApp::new()))
     }))
 }
 
 fn center_window(ctx: &egui::Context) {
-    use egui::viewport::ViewportCommand;
     let w = 420.0;
     let h = 300.0;
     if let Some(info) = ctx.input(|i| i.viewport().monitor_size) {
         let x = ((info.x as f32 - w) / 2.0).max(0.0);
         let y = ((info.y as f32 - h) / 2.0).max(0.0);
-        ctx.send_viewport_cmd(ViewportCommand::OuterPosition(egui::Pos2::new(x, y)));
+        ctx.input_mut(|i| i.viewport().outer_position = Some(egui::Pos2::new(x, y)));
     }
 }
 
@@ -49,6 +47,7 @@ struct BastionApp {
     state: AppState,
     result: Arc<Mutex<Option<Result<String, String>>>>,
     cfg: config::Config,
+    first_frame: bool,
 }
 
 enum AppState {
@@ -66,12 +65,22 @@ impl BastionApp {
         } else {
             AppState::MainMenu
         };
-        Self { state, result: Arc::new(Mutex::new(None)), cfg }
+        Self { state, result: Arc::new(Mutex::new(None)), cfg, first_frame: true }
     }
 }
 
 impl eframe::App for BastionApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if self.first_frame {
+            self.first_frame = false;
+            let w = 420.0;
+            let h = 300.0;
+            if let Some(info) = ctx.input(|i| i.viewport().monitor_size) {
+                let x = ((info.x as f32 - w) / 2.0).max(0.0);
+                let y = ((info.y as f32 - h) / 2.0).max(0.0);
+                ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::Pos2::new(x, y)));
+            }
+        }
         // Check if background task completed
         if let AppState::Connecting = self.state {
             if let Ok(mut r) = self.result.lock() {
